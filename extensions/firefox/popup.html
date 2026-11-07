@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Harbor</title>
+    <style>
+      body { font: 13px "Segoe UI", sans-serif; margin: 0; width: 240px; background: #142028; color: #e7eef3; }
+      main { padding: 14px; }
+      label { display: flex; gap: 8px; align-items: center; }
+      button { margin-top: 12px; width: 100%; border: 0; border-radius: 8px; padding: 8px; background: #2dd4bf; color: #06211e; }
+      p { color: #93a3ae; min-height: 1.2em; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <strong>Harbor</strong>
+      <p id="status">Checking the desktop app…</p>
+      <label><input id="intercept" type="checkbox" /> Intercept direct downloads</label>
+      <button id="ping" type="button">Check connection</button>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
