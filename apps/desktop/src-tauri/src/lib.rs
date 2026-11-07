@@ -13,9 +13,16 @@ struct Agent {
 }
 
 #[tauri::command]
-async fn agent_call(state: State<'_, Agent>, method: String, params: Value) -> Result<Value, String> {
+async fn agent_call(
+    state: State<'_, Agent>,
+    method: String,
+    params: Value,
+) -> Result<Value, String> {
     let client = wait_for_client(&state).await?;
-    client.call(&method, params).await.map_err(|err| err.to_string())
+    client
+        .call(&method, params)
+        .await
+        .map_err(|err| err.to_string())
 }
 
 pub fn run() {
@@ -85,13 +92,39 @@ fn agent_binary() -> PathBuf {
     if let Ok(path) = std::env::var("HARBOR_AGENT") {
         return PathBuf::from(path);
     }
+    let suffix = if cfg!(windows) { ".exe" } else { "" };
+    let names = [
+        format!("harbor-agent-{}{suffix}", env!("TAURI_ENV_TARGET_TRIPLE")),
+        format!("harbor-agent{suffix}"),
+    ];
+    let mut dirs = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            let sibling = dir.join(if cfg!(windows) { "harbor-agent.exe" } else { "harbor-agent" });
-            if sibling.exists() {
-                return sibling;
+            dirs.push(dir.to_path_buf());
+            // Tauri places externalBin sidecars in the resource directory:
+            // macOS Contents/Resources, Linux /usr/lib/<product> or the AppImage mount.
+            dirs.push(dir.join("../Resources"));
+            for lib_name in ["Harbor", "harbor"] {
+                dirs.push(dir.join(format!("../lib/{lib_name}")));
+                if let Ok(appdir) = std::env::var("APPDIR") {
+                    dirs.push(PathBuf::from(&appdir).join(format!("usr/lib/{lib_name}")));
+                }
+                dirs.push(PathBuf::from(format!("/usr/lib/{lib_name}")));
             }
         }
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../target/debug/harbor-agent")
+    for dir in &dirs {
+        for name in &names {
+            let candidate = dir.join(name);
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+    }
+    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(format!("../../../target/debug/harbor-agent{suffix}"));
+    if dev.is_file() {
+        return dev;
+    }
+    dirs.first().map(|dir| dir.join(&names[0])).unwrap_or(dev)
 }

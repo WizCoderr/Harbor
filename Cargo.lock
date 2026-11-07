@@ -1720,7 +1720,7 @@ dependencies = [
 
 [[package]]
 name = "harbor"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "harbor-agent",
  "serde",
@@ -1734,7 +1734,7 @@ dependencies = [
 
 [[package]]
 name = "harbor-agent"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1756,7 +1756,7 @@ dependencies = [
 
 [[package]]
 name = "harbor-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "percent-encoding",
@@ -1770,7 +1770,7 @@ dependencies = [
 
 [[package]]
 name = "harbor-engine"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -1797,7 +1797,7 @@ dependencies = [
 
 [[package]]
 name = "harbor-store"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "harbor-core",
