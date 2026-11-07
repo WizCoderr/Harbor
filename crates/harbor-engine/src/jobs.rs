@@ -4,6 +4,7 @@ use crate::transfer::{Gauges, TransferNote};
 use crate::EngineEvent;
 use crate::EngineHandle;
 use harbor_core::{assign_category, hash_file, Download, DownloadStatus, QueueKind};
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
@@ -311,10 +312,11 @@ impl EngineHandle {
         let handle = self.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_millis(250));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             let started = Instant::now();
             let start_bytes = gauges.bytes.load(Ordering::Relaxed);
-            let mut last_bytes = start_bytes;
-            let mut last_tick = Instant::now();
+            let mut window = VecDeque::new();
+            let mut held_eta: Option<(u64, Instant)> = None;
             let mut last_flush = Instant::now();
             loop {
                 tokio::select! {
@@ -324,7 +326,7 @@ impl EngineHandle {
                 if stop.is_cancelled() {
                     break;
                 }
-                handle.publish_sampled(&id, &gauges, started, start_bytes, &mut last_bytes, &mut last_tick);
+                handle.publish_sampled(&id, &gauges, started, start_bytes, &mut window, &mut held_eta);
                 if last_flush.elapsed() >= handle.config.flush_interval {
                     if gauges.segments.lock().expect("segments").is_empty() {
                         let _ = handle.store.set_progress(
@@ -348,24 +350,27 @@ impl EngineHandle {
         gauges: &Gauges,
         started: Instant,
         start_bytes: u64,
-        last_bytes: &mut u64,
-        last_tick: &mut Instant,
+        window: &mut VecDeque<PaceSample>,
+        held_eta: &mut Option<(u64, Instant)>,
     ) {
         let now_bytes = gauges.bytes.load(Ordering::Relaxed);
-        let elapsed = last_tick.elapsed().as_secs_f64().max(0.05);
-        let speed = ((now_bytes.saturating_sub(*last_bytes)) as f64 / elapsed) as u64;
-        *last_bytes = now_bytes;
-        *last_tick = Instant::now();
+        let now = Instant::now();
+        window.push_back(PaceSample { at: now, bytes: now_bytes });
+        while window.len() > 2 && now.saturating_duration_since(window[1].at) >= Duration::from_secs(2) {
+            window.pop_front();
+        }
+        let speed = window_speed(window);
         let average = ((now_bytes.saturating_sub(start_bytes)) as f64 / started.elapsed().as_secs_f64().max(0.05)) as u64;
         let download = self.store.get_download(id).ok().flatten();
         let total = download.as_ref().and_then(|item| item.total_bytes);
-        let eta = total.and_then(|total| {
+        let raw_eta = total.and_then(|total| {
             if speed > 0 && total > now_bytes {
                 Some((total - now_bytes) / speed)
             } else {
                 None
             }
         });
+        let eta = hold_eta(held_eta, raw_eta, now);
         let connections = gauges.connections.load(Ordering::Relaxed);
         self.stats.lock().expect("stats").insert(
             id.to_string(),
@@ -416,6 +421,53 @@ impl EngineHandle {
     }
 }
 
+struct PaceSample {
+    at: Instant,
+    bytes: u64,
+}
+
+fn window_speed(window: &VecDeque<PaceSample>) -> u64 {
+    let (Some(oldest), Some(newest)) = (window.front(), window.back()) else {
+        return 0;
+    };
+    let elapsed = newest.at.saturating_duration_since(oldest.at).as_secs_f64();
+    if elapsed < 0.5 {
+        return 0;
+    }
+    ((newest.bytes.saturating_sub(oldest.bytes)) as f64 / elapsed) as u64
+}
+
+fn hold_eta(held: &mut Option<(u64, Instant)>, raw: Option<u64>, now: Instant) -> Option<u64> {
+    match (*held, raw) {
+        (Some((prev, at)), Some(next)) => {
+            let age = now.saturating_duration_since(at).as_secs();
+            let jumped = next > prev.saturating_add(prev / 5 + 2);
+            let shown = if age < 1 && !jumped {
+                prev
+            } else if jumped || next + 1 < prev {
+                next
+            } else {
+                prev.saturating_sub(age.max(1))
+            };
+            *held = Some((shown, if shown == prev && age < 1 { at } else { now }));
+            Some(shown)
+        }
+        (Some((prev, at)), None) => {
+            if now.saturating_duration_since(at) >= Duration::from_secs(3) {
+                *held = None;
+                None
+            } else {
+                Some(prev)
+            }
+        }
+        (None, Some(next)) => {
+            *held = Some((next, now));
+            Some(next)
+        }
+        (None, None) => None,
+    }
+}
+
 fn unique_destination(dir: &str, filename: &str, replace: bool) -> PathBuf {
     let direct = Path::new(dir).join(filename);
     if replace || !direct.exists() {
@@ -446,4 +498,32 @@ fn merge_warning(current: Option<String>, note: String) -> String {
 
 fn nonzero_status(status: u16) -> Option<u16> {
     if status == 0 { None } else { Some(status) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{hold_eta, window_speed, PaceSample};
+    use std::collections::VecDeque;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn speed_ignores_a_quiet_gap_inside_the_window() {
+        let start = Instant::now() - Duration::from_secs(2);
+        let window = VecDeque::from([
+            PaceSample { at: start, bytes: 0 },
+            PaceSample { at: start + Duration::from_millis(1750), bytes: 1_000_000 },
+            PaceSample { at: start + Duration::from_secs(2), bytes: 1_000_000 },
+        ]);
+        let speed = window_speed(&window);
+        assert!(speed > 400_000 && speed < 600_000, "{speed}");
+    }
+
+    #[test]
+    fn eta_stays_put_when_the_next_sample_bounces() {
+        let now = Instant::now();
+        let mut held = Some((30, now));
+        assert_eq!(hold_eta(&mut held, Some(34), now + Duration::from_millis(200)), Some(30));
+        assert_eq!(hold_eta(&mut held, Some(12), now + Duration::from_millis(400)), Some(30));
+        assert_eq!(hold_eta(&mut held, Some(29), now + Duration::from_secs(1)), Some(29));
+    }
 }

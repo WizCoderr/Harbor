@@ -12,7 +12,15 @@ export function bytes(value: number | null | undefined): string {
 
 export function speed(value: number): string {
   if (!value) return "—";
-  return `${bytes(value)}/s`;
+  const units = ["B/s", "KB/s", "MB/s", "GB/s", "TB/s"];
+  let size = value;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  if (unit === 0) return `${Math.round(size)} B/s`;
+  return `${size.toFixed(1)} ${units[unit]}`;
 }
 
 export function eta(seconds: number | null | undefined): string {
@@ -21,9 +29,9 @@ export function eta(seconds: number | null | undefined): string {
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
   const secs = total % 60;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  if (minutes > 0) return `${minutes}m ${secs}s`;
-  return `${secs}s`;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  if (hours > 0) return `${hours}:${pad(minutes)}:${pad(secs)}`;
+  return `${minutes}:${pad(secs)}`;
 }
 
 export function when(millis: number): string {

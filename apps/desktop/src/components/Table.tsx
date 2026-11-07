@@ -1,6 +1,9 @@
 import type { MouseEvent } from "react";
+import { faArrowDown, faArrowUp, faInbox } from "@fortawesome/free-solid-svg-icons";
 import type { Download } from "../types";
-import { bytes, eta, fileType, percent, speed, statusLabel, when } from "../format";
+import { bytes, fileType, percent, statusLabel, when } from "../format";
+import { fileIcon, Icon, statusIcon } from "../icons";
+import { SteadyEta, SteadySpeed } from "../steady";
 
 export type SortKey = "filename" | "type" | "size" | "progress" | "speed" | "eta" | "status" | "category" | "added";
 
@@ -38,6 +41,7 @@ export function DownloadTable({
     return (
       <div className="empty">
         <div>
+          <div className="empty-mark"><Icon icon={faInbox} /></div>
           <strong>No downloads in this view</strong>
           Add a URL, drop a link, or import a list.
         </div>
@@ -51,8 +55,10 @@ export function DownloadTable({
           <tr>
             {columns.map(([key, label]) => (
               <th key={key} onClick={() => onSort(key)} aria-sort={sortKey === key ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
-                {label}
-                {sortKey === key ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                <span className="sort-label">
+                  {label}
+                  {sortKey === key && <Icon icon={sortDir === "asc" ? faArrowUp : faArrowDown} />}
+                </span>
               </th>
             ))}
           </tr>
@@ -71,7 +77,7 @@ export function DownloadTable({
                   onContext(row.id, event.clientX, event.clientY);
                 }}
               >
-                <td>{row.filename}</td>
+                <td className="file-cell"><Icon icon={fileIcon(row.filename)} /><span>{row.filename}</span></td>
                 <td>{fileType(row.filename, row.mime)}</td>
                 <td className="mono">{bytes(row.total_bytes)}</td>
                 <td className="progress">
@@ -79,9 +85,9 @@ export function DownloadTable({
                     <span style={{ width: `${ratio ?? 30}%` }} />
                   </div>
                 </td>
-                <td className="mono">{speed(row.speed_bps)}</td>
-                <td className="mono">{eta(row.eta_secs)}</td>
-                <td className={`status ${row.status}`}>{statusLabel(row.status)}</td>
+                <td className="mono metric"><SteadySpeed value={row.speed_bps} /></td>
+                <td className="mono metric"><SteadyEta value={row.eta_secs} /></td>
+                <td className={`status ${row.status}`}><Icon icon={statusIcon(row.status)} /><span>{statusLabel(row.status)}</span></td>
                 <td>{row.category_name ?? "—"}</td>
                 <td>{when(row.created_at)}</td>
               </tr>

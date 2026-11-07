@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Harbor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Send downloads to Harbor.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8RqrCYkl39Rdss3uXqK6Hotv12c/IuVYWNqeeNjyEUHc6TAiR64fSB96XSJcJ2aCm9GIscHlEid3Eo0irq5t7l4pDyDSEvDgOu/B9JtViiZTvLwLQbifhxGVjFF/eU5xju0mOomF49/Ogx9aX/1vMmZkuPX3UagzDnwOZkSUaqNAbadODux7pynEfNEUxqwsbC36a9Dvc+DMUCqL21MyILZLSGpIlrQJyN42bAbQobJn8PBbVlthzVK4u/Tu3XgkLj62hci6EmpT2xZhKNdjboJxLwnrXMe3NagdpQBPcmwamt2K14dE5emCK6mSn9ccHigmu4EetJWD+foIEu8eHQIDAQAB",
   "permissions": ["contextMenus", "downloads", "nativeMessaging", "cookies", "storage", "activeTab"],

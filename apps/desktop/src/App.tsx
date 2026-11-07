@@ -1,10 +1,40 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
+import {
+  faArrowsRotate,
+  faCalendarDays,
+  faCircleStop,
+  faClock,
+  faCopy,
+  faDownload,
+  faEye,
+  faFileImport,
+  faFloppyDisk,
+  faFolderOpen,
+  faFolderPlus,
+  faGear,
+  faLink,
+  faList,
+  faMagnifyingGlass,
+  faPause,
+  faPlay,
+  faPlug,
+  faPlugCircleXmark,
+  faPlus,
+  faRotateRight,
+  faStop,
+  faTrash,
+  faTrashCan,
+  faXmark,
+} from "@fortawesome/free-solid-svg-icons";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { call, onEvent } from "./api";
 import { Details } from "./components/Details";
 import { DownloadTable, type SortKey } from "./components/Table";
 import { bytes, speed } from "./format";
+import { categoryIcon, Icon, IconButton, libraryIcon, queueIcon } from "./icons";
+import { useSteady } from "./steady";
 import type { Category, Download, Filter, GrabbedLink, HarborEvent, ProbeResult, Queue, Schedule, Segment, Settings, Summary } from "./types";
 
 const emptySummary: Summary = { all: 0, downloading: 0, queued: 0, completed: 0, paused: 0, failed: 0, speed_bps: 0, categories: [], queues: [] };
@@ -100,6 +130,7 @@ export function App() {
   }, [selected]);
 
   const rows = useMemo(() => sortRows(downloads, sortKey, sortDir), [downloads, sortKey, sortDir]);
+  const shownSpeed = useSteady(summary.speed_bps);
   const active = downloads.find((item) => item.id === selected[0]) ?? null;
   const chosen = downloads.filter((item) => selected.includes(item.id));
 
@@ -131,45 +162,57 @@ export function App() {
           <div><strong>Harbor</strong><span>Free and open source</span></div>
         </div>
         <nav className="nav" aria-label="Library">
-          <SidebarButton current={filter.kind === "all"} count={summary.all} onClick={() => setFilter({ kind: "all" })}>All downloads</SidebarButton>
-          <SidebarButton current={filter.kind === "downloading"} count={summary.downloading} onClick={() => setFilter({ kind: "downloading" })}>Downloading</SidebarButton>
-          <SidebarButton current={filter.kind === "queued"} count={summary.queued} onClick={() => setFilter({ kind: "queued" })}>Queued</SidebarButton>
-          <SidebarButton current={filter.kind === "completed"} count={summary.completed} onClick={() => setFilter({ kind: "completed" })}>Completed</SidebarButton>
-          <SidebarButton current={filter.kind === "paused"} count={summary.paused} onClick={() => setFilter({ kind: "paused" })}>Paused</SidebarButton>
-          <SidebarButton current={filter.kind === "failed"} count={summary.failed} onClick={() => setFilter({ kind: "failed" })}>Failed</SidebarButton>
+          <SidebarButton icon={libraryIcon("all")} current={filter.kind === "all"} count={summary.all} onClick={() => setFilter({ kind: "all" })}>All downloads</SidebarButton>
+          <SidebarButton icon={libraryIcon("downloading")} current={filter.kind === "downloading"} count={summary.downloading} onClick={() => setFilter({ kind: "downloading" })}>Downloading</SidebarButton>
+          <SidebarButton icon={libraryIcon("queued")} current={filter.kind === "queued"} count={summary.queued} onClick={() => setFilter({ kind: "queued" })}>Queued</SidebarButton>
+          <SidebarButton icon={libraryIcon("completed")} current={filter.kind === "completed"} count={summary.completed} onClick={() => setFilter({ kind: "completed" })}>Completed</SidebarButton>
+          <SidebarButton icon={libraryIcon("paused")} current={filter.kind === "paused"} count={summary.paused} onClick={() => setFilter({ kind: "paused" })}>Paused</SidebarButton>
+          <SidebarButton icon={libraryIcon("failed")} current={filter.kind === "failed"} count={summary.failed} onClick={() => setFilter({ kind: "failed" })}>Failed</SidebarButton>
           <div className="label">Categories</div>
           {categories.map((category) => (
-            <SidebarButton key={category.id} current={filter.kind === "category" && filter.id === category.id} count={summary.categories.find((item) => item.id === category.id)?.count ?? 0} onClick={() => setFilter({ kind: "category", id: category.id })}>
+            <SidebarButton key={category.id} icon={categoryIcon(category.name)} current={filter.kind === "category" && filter.id === category.id} count={summary.categories.find((item) => item.id === category.id)?.count ?? 0} onClick={() => setFilter({ kind: "category", id: category.id })}>
               {category.name}
             </SidebarButton>
           ))}
           <div className="label">Queues</div>
           {queues.map((queue) => (
-            <SidebarButton key={queue.id} current={filter.kind === "queue" && filter.id === queue.id} count={undefined} onClick={() => setFilter({ kind: "queue", id: queue.id })}>
+            <SidebarButton key={queue.id} icon={queueIcon(queue.name)} current={filter.kind === "queue" && filter.id === queue.id} count={undefined} onClick={() => setFilter({ kind: "queue", id: queue.id })}>
               {queue.name}
             </SidebarButton>
           ))}
         </nav>
         <div className="side-actions">
-          <button type="button" onClick={() => setDialog("category")}>New category</button>
-          <button type="button" onClick={() => setDialog("grabber")}>Grab links</button>
+          <IconButton icon={faFolderPlus} onClick={() => setDialog("category")}>New category</IconButton>
+          <IconButton icon={faLink} onClick={() => setDialog("grabber")}>Grab links</IconButton>
         </div>
       </aside>
       <main className="main">
         <div className="toolbar" role="toolbar" aria-label="Download actions">
-          <button type="button" className="primary" onClick={() => setDialog("add")}>Add URL</button>
-          <button type="button" disabled={!chosen.some((item) => item.status !== "downloading" && item.status !== "completed")} onClick={() => void run("downloads.start")}>Start</button>
-          <button type="button" disabled={!chosen.some((item) => item.status === "paused" || item.status === "stopped")} onClick={() => void run("downloads.resume")}>Resume</button>
-          <button type="button" disabled={!chosen.some((item) => item.status === "downloading")} onClick={() => void run("downloads.pause")}>Pause</button>
-          <button type="button" disabled={!chosen.some((item) => item.status === "downloading" || item.status === "queued")} onClick={() => void run("downloads.stop")}>Stop</button>
-          <button type="button" onClick={() => void call("downloads.stop_all").then(refresh)}>Stop all</button>
-          <button type="button" disabled={!selected.length} onClick={() => setDialog("delete")}>Delete</button>
-          <button type="button" onClick={() => void call("downloads.delete_completed").then(refresh)}>Delete completed</button>
-          <button type="button" onClick={() => setDialog("schedule")}>Scheduler</button>
-          <button type="button" onClick={() => setDialog("batch")}>Import</button>
-          <button type="button" onClick={() => setDialog("settings")}>Settings</button>
-          <label className="search">Search
-            <input id="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filename or URL" />
+          <div className="tool-group">
+            <IconButton className="primary" icon={faPlus} onClick={() => setDialog("add")}>Add URL</IconButton>
+          </div>
+          <span className="tool-sep" aria-hidden="true" />
+          <div className="tool-group">
+            <IconButton icon={faPlay} disabled={!chosen.some((item) => item.status !== "downloading" && item.status !== "completed")} onClick={() => void run("downloads.start")}>Start</IconButton>
+            <IconButton icon={faRotateRight} disabled={!chosen.some((item) => item.status === "paused" || item.status === "stopped")} onClick={() => void run("downloads.resume")}>Resume</IconButton>
+            <IconButton icon={faPause} disabled={!chosen.some((item) => item.status === "downloading")} onClick={() => void run("downloads.pause")}>Pause</IconButton>
+            <IconButton icon={faStop} disabled={!chosen.some((item) => item.status === "downloading" || item.status === "queued")} onClick={() => void run("downloads.stop")}>Stop</IconButton>
+            <IconButton icon={faCircleStop} onClick={() => void call("downloads.stop_all").then(refresh)}>Stop all</IconButton>
+          </div>
+          <span className="tool-sep" aria-hidden="true" />
+          <div className="tool-group">
+            <IconButton icon={faTrash} disabled={!selected.length} onClick={() => setDialog("delete")}>Delete</IconButton>
+            <IconButton icon={faTrashCan} onClick={() => void call("downloads.delete_completed").then(refresh)}>Delete completed</IconButton>
+          </div>
+          <span className="tool-sep" aria-hidden="true" />
+          <div className="tool-group">
+            <IconButton icon={faCalendarDays} onClick={() => setDialog("schedule")}>Scheduler</IconButton>
+            <IconButton icon={faFileImport} onClick={() => setDialog("batch")}>Import</IconButton>
+            <IconButton icon={faGear} onClick={() => setDialog("settings")}>Settings</IconButton>
+          </div>
+          <label className="search">
+            <Icon icon={faMagnifyingGlass} />
+            <input id="search" aria-label="Search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filename or URL" />
           </label>
         </div>
         <DownloadTable
@@ -184,19 +227,22 @@ export function App() {
         />
         <Details download={active} segments={segments} />
         <footer className="status-bar">
-          <span>{connected ? "Agent connected" : "Agent unavailable"} · {summary.downloading} active · {speed(summary.speed_bps)}</span>
-          <span>{summary.all} downloads</span>
+          <span className={connected ? "agent ok" : "agent bad"}>
+            <Icon icon={connected ? faPlug : faPlugCircleXmark} />
+            {connected ? "Agent connected" : "Agent unavailable"} · {summary.downloading} active · {speed(shownSpeed)}
+          </span>
+          <span><Icon icon={faList} />{summary.all} downloads</span>
         </footer>
       </main>
       {menu && (
         <div className="menu" style={{ left: menu.x, top: menu.y }} role="menu">
-          <button type="button" onClick={() => void run("downloads.start")}>Start</button>
-          <button type="button" onClick={() => void run("downloads.pause")}>Pause</button>
-          <button type="button" onClick={() => void run("downloads.resume")}>Resume</button>
-          <button type="button" onClick={() => void run("downloads.stop")}>Stop</button>
-          <button type="button" onClick={() => { if (active) void navigator.clipboard.writeText(active.url); }}>Copy URL</button>
-          <button type="button" onClick={() => { if (active) void revealItemInDir(active.destination_dir); }}>Show in folder</button>
-          <button type="button" onClick={() => setDialog("delete")}>Delete</button>
+          <IconButton icon={faPlay} onClick={() => void run("downloads.start")}>Start</IconButton>
+          <IconButton icon={faPause} onClick={() => void run("downloads.pause")}>Pause</IconButton>
+          <IconButton icon={faRotateRight} onClick={() => void run("downloads.resume")}>Resume</IconButton>
+          <IconButton icon={faStop} onClick={() => void run("downloads.stop")}>Stop</IconButton>
+          <IconButton icon={faCopy} onClick={() => { if (active) void navigator.clipboard.writeText(active.url); }}>Copy URL</IconButton>
+          <IconButton icon={faFolderOpen} onClick={() => { if (active) void revealItemInDir(active.destination_dir); }}>Show in folder</IconButton>
+          <IconButton icon={faTrash} onClick={() => setDialog("delete")}>Delete</IconButton>
         </div>
       )}
       <div className="toasts" aria-live="polite">{toasts.map((item) => <div className="toast" key={item.id}>{item.text}</div>)}</div>
@@ -207,12 +253,12 @@ export function App() {
       {dialog === "batch" && <BatchDialog onClose={() => setDialog(null)} onDone={async (count) => { setDialog(null); toast(`Imported ${count} lines`); await refresh(); }} />}
       {dialog === "category" && <CategoryDialog onClose={() => setDialog(null)} onPickFolder={pickFolder} onSave={async (category) => { await call("categories.save", category); setDialog(null); await refresh(); }} />}
       {dialog === "delete" && (
-        <Dialog title="Delete downloads" onClose={() => setDialog(null)}>
+        <Dialog title="Delete downloads" icon={faTrash} onClose={() => setDialog(null)}>
           <p>Remove {selected.length} download{selected.length === 1 ? "" : "s"} from Harbor.</p>
           <label className="check"><input type="checkbox" checked={deleteFiles} onChange={(event) => setDeleteFiles(event.target.checked)} /> Also delete files from disk</label>
           <div className="actions">
-            <button type="button" onClick={() => setDialog(null)}>Cancel</button>
-            <button type="button" className="primary" onClick={() => { void Promise.all(selected.map((id) => call("downloads.delete", { id, delete_files: deleteFiles }))).then(refresh); setDialog(null); setSelected([]); }}>Delete</button>
+            <IconButton icon={faXmark} onClick={() => setDialog(null)}>Cancel</IconButton>
+            <IconButton icon={faTrash} className="primary" onClick={() => { void Promise.all(selected.map((id) => call("downloads.delete", { id, delete_files: deleteFiles }))).then(refresh); setDialog(null); setSelected([]); }}>Delete</IconButton>
           </div>
         </Dialog>
       )}
@@ -220,15 +266,23 @@ export function App() {
   );
 }
 
-function SidebarButton({ current, count, onClick, children }: { current: boolean; count?: number; onClick: () => void; children: string }) {
-  return <button type="button" aria-current={current ? "page" : undefined} onClick={onClick}><span>{children}</span>{count != null && <span className="count">{count}</span>}</button>;
+function SidebarButton({ current, count, icon, onClick, children }: { current: boolean; count?: number; icon: IconDefinition; onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" aria-current={current ? "page" : undefined} onClick={onClick}>
+      <span className="nav-label"><Icon icon={icon} /><span>{children}</span></span>
+      {count != null && <span className="count">{count}</span>}
+    </button>
+  );
 }
 
-function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+function Dialog({ title, icon, onClose, children }: { title: string; icon: IconDefinition; onClose: () => void; children: ReactNode }) {
   return (
     <div className="backdrop" onMouseDown={onClose}>
       <div className="dialog" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => event.stopPropagation()}>
-        <h2>{title}</h2>
+        <div className="dialog-head">
+          <h2><Icon icon={icon} />{title}</h2>
+          <button type="button" className="icon-button" aria-label="Close" onClick={onClose}><Icon icon={faXmark} /></button>
+        </div>
         {children}
       </div>
     </div>
@@ -270,8 +324,13 @@ function AddDialog({ initialUrl, categories, queues, settings, onClose, onPickFo
     await onDone(start ? "Download started" : "Saved for later");
   }
   return (
-    <Dialog title="Add URL" onClose={onClose}>
-      <label>Download URL<input value={url} onChange={(event) => setUrl(event.target.value)} onBlur={() => { if (url.startsWith("http") || url.startsWith("ftp")) void probe(); }} autoFocus /></label>
+    <Dialog title="Add URL" icon={faLink} onClose={onClose}>
+      <label>Download URL
+        <span className="input-icon">
+          <Icon icon={faLink} />
+          <input value={url} onChange={(event) => setUrl(event.target.value)} onBlur={() => { if (url.startsWith("http") || url.startsWith("ftp")) void probe(); }} autoFocus />
+        </span>
+      </label>
       <div className="row">
         <label>Filename<input value={filename} onChange={(event) => setFilename(event.target.value)} placeholder={info?.filename ?? "Detected from the server"} /></label>
         <label>Category
@@ -284,7 +343,7 @@ function AddDialog({ initialUrl, categories, queues, settings, onClose, onPickFo
       <label>Save location
         <div className="row">
           <input value={folder} onChange={(event) => setFolder(event.target.value)} />
-          <button type="button" onClick={() => void onPickFolder(folder).then((path) => { if (path) setFolder(path); })}>Browse</button>
+          <IconButton icon={faFolderOpen} onClick={() => void onPickFolder(folder).then((path) => { if (path) setFolder(path); })}>Browse</IconButton>
         </div>
       </label>
       <label>Queue
@@ -301,10 +360,10 @@ function AddDialog({ initialUrl, categories, queues, settings, onClose, onPickFo
       {info && <p>{info.total_bytes ? bytes(info.total_bytes) : "Size unknown"} · HTTP {info.http_status} · {info.accelerated_possible ? "Segmented download available" : "Single connection"}</p>}
       {error && <p className="error">{error}</p>}
       <div className="actions">
-        <button type="button" onClick={onClose}>Cancel</button>
-        <button type="button" onClick={() => void probe()}>Check URL</button>
-        <button type="button" onClick={() => void submit(false)}>Download later</button>
-        <button type="button" className="primary" onClick={() => void submit(true)}>Download now</button>
+        <IconButton icon={faXmark} onClick={onClose}>Cancel</IconButton>
+        <IconButton icon={faMagnifyingGlass} onClick={() => void probe()}>Check URL</IconButton>
+        <IconButton icon={faClock} onClick={() => void submit(false)}>Download later</IconButton>
+        <IconButton icon={faDownload} className="primary" onClick={() => void submit(true)}>Download now</IconButton>
       </div>
     </Dialog>
   );
@@ -314,7 +373,7 @@ function SettingsDialog({ settings, onClose, onSave, onPickFolder }: { settings:
   const [draft, setDraft] = useState(settings);
   const set = (patch: Partial<Settings>) => setDraft({ ...draft, ...patch });
   return (
-    <Dialog title="Settings" onClose={onClose}>
+    <Dialog title="Settings" icon={faGear} onClose={onClose}>
       <p>Harbor is free under the MIT license. There is no paid unlock. Leave bandwidth and the hourly quota at 0 for full speed.</p>
       <label>Theme
         <select value={draft.theme} onChange={(event) => set({ theme: event.target.value })}>
@@ -322,7 +381,7 @@ function SettingsDialog({ settings, onClose, onSave, onPickFolder }: { settings:
         </select>
       </label>
       <label>Default folder
-        <div className="row"><input value={draft.default_directory} onChange={(event) => set({ default_directory: event.target.value })} /><button type="button" onClick={() => void onPickFolder(draft.default_directory).then((path) => { if (path) set({ default_directory: path }); })}>Browse</button></div>
+        <div className="row"><input value={draft.default_directory} onChange={(event) => set({ default_directory: event.target.value })} /><IconButton icon={faFolderOpen} onClick={() => void onPickFolder(draft.default_directory).then((path) => { if (path) set({ default_directory: path }); })}>Browse</IconButton></div>
       </label>
       <div className="row">
         <label>Max connections<input type="number" min={1} max={32} value={draft.max_connections} onChange={(event) => set({ max_connections: Number(event.target.value) })} /></label>
@@ -338,9 +397,9 @@ function SettingsDialog({ settings, onClose, onSave, onPickFolder }: { settings:
       <label className="check"><input type="checkbox" checked={draft.intercept_downloads} onChange={(event) => set({ intercept_downloads: event.target.checked })} /> Browser extension may intercept downloads</label>
       <label className="check"><input type="checkbox" checked={draft.notifications} onChange={(event) => set({ notifications: event.target.checked })} /> Notifications</label>
       <div className="actions">
-        <button type="button" onClick={() => void call("updates.check").then((result) => alert(JSON.stringify(result)))}>Check for updates</button>
-        <button type="button" onClick={onClose}>Cancel</button>
-        <button type="button" className="primary" onClick={() => void onSave(draft)}>Save</button>
+        <IconButton icon={faArrowsRotate} onClick={() => void call("updates.check").then((result) => alert(JSON.stringify(result)))}>Check for updates</IconButton>
+        <IconButton icon={faXmark} onClick={onClose}>Cancel</IconButton>
+        <IconButton icon={faFloppyDisk} className="primary" onClick={() => void onSave(draft)}>Save</IconButton>
       </div>
     </Dialog>
   );
@@ -367,7 +426,7 @@ function SchedulerDialog({ queues, onClose, onChanged, toast }: { queues: Queue[
     }).catch(() => undefined);
   }, [queueId, queue]);
   return (
-    <Dialog title="Scheduler" onClose={onClose}>
+    <Dialog title="Scheduler" icon={faCalendarDays} onClose={onClose}>
       <label>Queue
         <select value={queueId} onChange={(event) => setQueueId(event.target.value)}>
           {queues.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.status}</option>)}
@@ -387,11 +446,11 @@ function SchedulerDialog({ queues, onClose, onChanged, toast }: { queues: Queue[
         </select>
       </label>
       <div className="actions">
-        <button type="button" onClick={() => void call("queues.save", { name: "New queue", kind: "download", max_concurrent: 2 }).then(onChanged).then(() => toast("Queue created"))}>New queue</button>
-        <button type="button" onClick={() => void call("queues.start", { id: queueId }).then(onChanged)}>Start now</button>
-        <button type="button" onClick={() => void call("queues.pause", { id: queueId }).then(onChanged)}>Pause</button>
-        <button type="button" onClick={() => void call("queues.stop", { id: queueId }).then(onChanged)}>Stop</button>
-        <button type="button" className="primary" onClick={() => void saveSchedule()}>Save</button>
+        <IconButton icon={faPlus} onClick={() => void call("queues.save", { name: "New queue", kind: "download", max_concurrent: 2 }).then(onChanged).then(() => toast("Queue created"))}>New queue</IconButton>
+        <IconButton icon={faPlay} onClick={() => void call("queues.start", { id: queueId }).then(onChanged)}>Start now</IconButton>
+        <IconButton icon={faPause} onClick={() => void call("queues.pause", { id: queueId }).then(onChanged)}>Pause</IconButton>
+        <IconButton icon={faStop} onClick={() => void call("queues.stop", { id: queueId }).then(onChanged)}>Stop</IconButton>
+        <IconButton icon={faFloppyDisk} className="primary" onClick={() => void saveSchedule()}>Save</IconButton>
       </div>
     </Dialog>
   );
@@ -418,7 +477,7 @@ function GrabberDialog({ onClose, onDone }: { categories: Category[]; onClose: (
   const [links, setLinks] = useState<GrabbedLink[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
   return (
-    <Dialog title="Grab links" onClose={onClose}>
+    <Dialog title="Grab links" icon={faLink} onClose={onClose}>
       <label>Page URL<input value={url} onChange={(event) => setUrl(event.target.value)} /></label>
       <div className="row">
         <label>Extensions<input value={extensions} onChange={(event) => setExtensions(event.target.value)} /></label>
@@ -433,8 +492,8 @@ function GrabberDialog({ onClose, onDone }: { categories: Category[]; onClose: (
         ))}
       </div>
       <div className="actions">
-        <button type="button" onClick={() => void call<GrabbedLink[]>("grabber.preview", { url, extensions, domain, depth: 2 }).then((found) => { setLinks(found); setPicked(found.map((link) => link.url)); })}>Preview</button>
-        <button type="button" className="primary" onClick={() => void call("batch.import", { text: picked.join("\n"), start: false }).then(() => onDone(picked.length))}>Add selected</button>
+        <IconButton icon={faEye} onClick={() => void call<GrabbedLink[]>("grabber.preview", { url, extensions, domain, depth: 2 }).then((found) => { setLinks(found); setPicked(found.map((link) => link.url)); })}>Preview</IconButton>
+        <IconButton icon={faPlus} className="primary" onClick={() => void call("batch.import", { text: picked.join("\n"), start: false }).then(() => onDone(picked.length))}>Add selected</IconButton>
       </div>
     </Dialog>
   );
@@ -443,11 +502,11 @@ function GrabberDialog({ onClose, onDone }: { categories: Category[]; onClose: (
 function BatchDialog({ onClose, onDone }: { onClose: () => void; onDone: (count: number) => Promise<void> }) {
   const [text, setText] = useState("");
   return (
-    <Dialog title="Import URLs" onClose={onClose}>
+    <Dialog title="Import URLs" icon={faFileImport} onClose={onClose}>
       <textarea rows={8} value={text} onChange={(event) => setText(event.target.value)} placeholder="One URL per line" />
       <div className="actions">
-        <button type="button" onClick={onClose}>Cancel</button>
-        <button type="button" className="primary" onClick={() => void call("batch.import", { text, start: false }).then(() => onDone(text.split("\n").filter((line) => line.trim()).length))}>Import</button>
+        <IconButton icon={faXmark} onClick={onClose}>Cancel</IconButton>
+        <IconButton icon={faFileImport} className="primary" onClick={() => void call("batch.import", { text, start: false }).then(() => onDone(text.split("\n").filter((line) => line.trim()).length))}>Import</IconButton>
       </div>
     </Dialog>
   );
@@ -459,12 +518,12 @@ function CategoryDialog({ onClose, onSave, onPickFolder }: { onClose: () => void
   const [directory, setDirectory] = useState("");
   const [sites, setSites] = useState("");
   return (
-    <Dialog title="New category" onClose={onClose}>
+    <Dialog title="New category" icon={faFolderPlus} onClose={onClose}>
       <label>Name<input value={name} onChange={(event) => setName(event.target.value)} /></label>
       <label>Extensions<input value={extensions} onChange={(event) => setExtensions(event.target.value)} placeholder="epub mobi" /></label>
-      <label>Folder<div className="row"><input value={directory} onChange={(event) => setDirectory(event.target.value)} /><button type="button" onClick={() => void onPickFolder().then((path) => { if (path) setDirectory(path); })}>Browse</button></div></label>
+      <label>Folder<div className="row"><input value={directory} onChange={(event) => setDirectory(event.target.value)} /><IconButton icon={faFolderOpen} onClick={() => void onPickFolder().then((path) => { if (path) setDirectory(path); })}>Browse</IconButton></div></label>
       <label>Only from these sites<input value={sites} onChange={(event) => setSites(event.target.value)} placeholder="cdn.example.com" /></label>
-      <div className="actions"><button type="button" onClick={onClose}>Cancel</button><button type="button" className="primary" onClick={() => void onSave({ name, extensions, directory, site_filter: sites })}>Save</button></div>
+      <div className="actions"><IconButton icon={faXmark} onClick={onClose}>Cancel</IconButton><IconButton icon={faFloppyDisk} className="primary" onClick={() => void onSave({ name, extensions, directory, site_filter: sites })}>Save</IconButton></div>
     </Dialog>
   );
 }

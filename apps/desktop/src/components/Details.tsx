@@ -1,11 +1,14 @@
+import { faBarsProgress, faInbox } from "@fortawesome/free-solid-svg-icons";
 import type { Download, Segment } from "../types";
-import { bytes, eta, speed } from "../format";
+import { bytes } from "../format";
+import { fileIcon, Icon } from "../icons";
+import { SteadyEta, SteadySpeed } from "../steady";
 
 export function Details({ download, segments }: { download: Download | null; segments: Segment[] }) {
   if (!download) {
     return (
       <section className="details">
-        <div className="empty"><div>Select a download to see its URL, segments, and errors.</div></div>
+        <div className="empty"><div><div className="empty-mark"><Icon icon={faInbox} /></div>Select a download to see its URL, segments, and errors.</div></div>
       </section>
     );
   }
@@ -15,13 +18,13 @@ export function Details({ download, segments }: { download: Download | null; seg
   return (
     <section className="details" aria-label="Download details">
       <div>
-        <h2>{download.filename}</h2>
+        <h2><Icon icon={fileIcon(download.filename)} />{download.filename}</h2>
         <dl className="meta">
           <dt>URL</dt><dd title={download.url}>{download.final_url || download.url}</dd>
           <dt>Destination</dt><dd>{download.destination_dir}</dd>
           <dt>Size</dt><dd className="mono">{bytes(download.downloaded_bytes)} / {bytes(download.total_bytes)}</dd>
-          <dt>Speed</dt><dd className="mono">{speed(download.speed_bps)} current · {speed(download.average_bps)} average</dd>
-          <dt>Remaining</dt><dd>{eta(download.eta_secs)}</dd>
+          <dt>Speed</dt><dd className="mono metric" key={`${download.id}-speed`}><SteadySpeed value={download.speed_bps} /> current · <SteadySpeed value={download.average_bps} /> average</dd>
+          <dt>Remaining</dt><dd className="mono metric" key={`${download.id}-eta`}><SteadyEta value={download.eta_secs} /></dd>
           <dt>Connections</dt><dd>{download.accelerated ? `${download.active_connections} accelerated` : `${download.active_connections || 1} single connection`}</dd>
           <dt>HTTP status</dt><dd>{download.http_status ?? "—"}</dd>
           <dt>Resume</dt><dd>{download.resume_capable ? "Supported" : "Not available for this server"}</dd>
@@ -31,7 +34,7 @@ export function Details({ download, segments }: { download: Download | null; seg
         {download.warning && <p>{download.warning}</p>}
       </div>
       <div className="segments">
-        <strong>Segments</strong>
+        <strong><Icon icon={faBarsProgress} />Segments</strong>
         {bars.map((segment, index) => {
           const span = Math.max(1, segment.end_byte - segment.start_byte);
           const ratio = Math.min(100, (segment.received_bytes / span) * 100);

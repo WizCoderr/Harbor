@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Harbor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Send downloads to Harbor.",
   "browser_specific_settings": {
     "gecko": { "id": "harbor@harbor.local", "strict_min_version": "115.0" }
