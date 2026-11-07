@@ -6,7 +6,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
-use harbor_core::{endpoint_id, NATIVE_HOST_NAME, EXTENSION_ID, FIREFOX_EXTENSION_ID};
+#[cfg(not(target_os = "android"))]
+use harbor_core::endpoint_id;
+use harbor_core::{EXTENSION_ID, FIREFOX_EXTENSION_ID, NATIVE_HOST_NAME};
 use harbor_engine::{EngineConfig, EngineEvent, EngineHandle, MemorySecrets, Secrets};
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -67,19 +69,22 @@ pub fn default_data_dir() -> PathBuf {
 }
 
 pub fn socket_path(data_dir: &Path) -> PathBuf {
-    let id = endpoint_id(&data_dir.to_string_lossy());
     #[cfg(target_os = "android")]
     {
-        data_dir.join("harbor.sock")
+        return data_dir.join("harbor.sock");
     }
-    #[cfg(all(unix, not(target_os = "android")))]
+    #[cfg(not(target_os = "android"))]
     {
-        let user = std::env::var("USER").unwrap_or_else(|_| "user".into());
-        PathBuf::from(format!("/tmp/harbor-{user}-{id}.sock"))
-    }
-    #[cfg(windows)]
-    {
-        PathBuf::from(format!(r"\\.\pipe\harbor-{id}"))
+        let id = endpoint_id(&data_dir.to_string_lossy());
+        #[cfg(unix)]
+        {
+            let user = std::env::var("USER").unwrap_or_else(|_| "user".into());
+            PathBuf::from(format!("/tmp/harbor-{user}-{id}.sock"))
+        }
+        #[cfg(windows)]
+        {
+            PathBuf::from(format!(r"\\.\pipe\harbor-{id}"))
+        }
     }
 }
 
@@ -561,7 +566,7 @@ fn chrome_host_dirs() -> Vec<PathBuf> {
             config.join("chromium/NativeMessagingHosts"),
         ];
     }
-    #[cfg(windows)]
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         let _ = home;
         Vec::new()
@@ -578,7 +583,7 @@ fn firefox_host_dirs() -> Vec<PathBuf> {
     {
         return vec![home.join(".mozilla/native-messaging-hosts")];
     }
-    #[cfg(windows)]
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         let _ = home;
         Vec::new()
@@ -679,6 +684,7 @@ fn register_task(when: Option<i64>, exe: &Path, data_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
 fn xml_escape(value: &str) -> String {
     value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }

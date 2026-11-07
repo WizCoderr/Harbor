@@ -127,9 +127,7 @@ export function App() {
     <div className="app" onDragOver={(event) => event.preventDefault()} onDrop={onDrop} onClick={() => setMenu(null)}>
       <aside className="sidebar">
         <div className="brand">
-          <div className="mark" aria-hidden="true">
-            <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 2v8M4.5 7.5 8 11l3.5-3.5M3 13h10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
-          </div>
+          <img className="mark" src="/favicon.png" alt="" />
           <div><strong>Harbor</strong><span>Free and open source</span></div>
         </div>
         <nav className="nav" aria-label="Library">

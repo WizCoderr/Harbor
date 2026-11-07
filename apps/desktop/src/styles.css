@@ -62,8 +62,7 @@ button:disabled { cursor: default; opacity: 0.45; }
 .brand { display: flex; gap: 10px; align-items: center; padding: 0 6px 14px; }
 .mark {
   width: 28px; height: 28px; border-radius: 8px;
-  background: var(--accent); color: var(--accent-ink);
-  display: grid; place-items: center;
+  object-fit: cover;
 }
 .brand strong { display: block; font-size: 15px; letter-spacing: -0.02em; }
 .brand span { color: var(--muted); font-size: 11px; }
